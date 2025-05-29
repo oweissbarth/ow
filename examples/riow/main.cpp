@@ -145,7 +145,9 @@ int main(){
     }
 
     pool.join();
-    im.savePPM("result.ppm");
+    if(!im.savePPM("result.ppm")){
+        std::cout << "Failed to save image" << std::endl;
+    }
 }
 
 

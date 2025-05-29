@@ -4,6 +4,7 @@
 
 #include <vector>
 #include <string>
+#include <span>
 #include <mutex>
 
 namespace ow::cg
@@ -13,20 +14,24 @@ class Image
 {
 public:
 
-    Image(const int width, const int height);
+    Image(int width, int height);
 
-    bool savePPM(const std::string path);
+    Image(int width,  int height, const std::span<float>& pixels);
 
-    math::Vec3f get(const int x, const int y) const;
-    void set(const int x, const int y, const math::Vec3f pixel);
+    [[nodiscard]] bool savePPM(const std::string& path) const;
 
-    int get_width() const;
-    int get_height() const;
+    [[nodiscard]] math::Vec3f get(int x, int y) const;
+    void set(int x, int y, math::Vec3f pixel);
+
+    [[nodiscard]] int get_width() const;
+    [[nodiscard]] int get_height() const;
+
+    [[nodiscard]] const float* data() const;
 
 private:
-    const int width;
-    const int height;
-    std::vector<float> pixels;
+    const int m_width;
+    const int m_height;
+    std::vector<float> m_pixels;
 
     std::mutex m_lock;
 

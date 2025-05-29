@@ -14,8 +14,7 @@ public:
   virtual bool init() = 0;
   virtual bool register_object(const cg::Object& object) = 0;
   virtual bool prepare_render() = 0;
-  virtual bool set_uniform(const Uniform<float>& uniform) = 0;
-  virtual bool render(cg::Image& frame, const math::Mat4f& viewMatrix, const math::Mat4f& projectionMatrix, const math::Vec3f& cameraPosition) = 0;
+  virtual bool render(const math::Mat4f& viewMatrix, const math::Mat4f& projectionMatrix, const math::Vec3f& cameraPosition) = 0;
   virtual bool shutdown() = 0;
 
 protected:

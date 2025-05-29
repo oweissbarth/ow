@@ -9,12 +9,13 @@ file(GLOB owio_PCH
 
 
 find_package(TinyGLTF CONFIG REQUIRED)
+find_package(stb CONFIG REQUIRED)
 
 add_library(owio ${owio_SRC})
 #add_library(owio OBJECT ${owio_SRC})
 target_include_directories(owio PUBLIC ${PROJECT_SOURCE_DIR})
 #target_precompile_headers(owio PRIVATE ${owio_PCH})
-target_link_libraries(owio PUBLIC owcg TinyGLTF::TinyGLTF)
+target_link_libraries(owio PUBLIC owcg TinyGLTF::TinyGLTF stb::stb)
 
 get_target_property(owio_INCLUDES TinyGLTF::TinyGLTF INTERFACE_INCLUDE_DIRECTORIES)
 

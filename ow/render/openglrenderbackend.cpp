@@ -1,12 +1,9 @@
 #include "ow/render/openglrenderbackend.h"
-#include "ow/math/mat4.h"
-#include "ow/math/vec3.h"
-#include "ow/utils/fileio.h"
+#include "ow/render/shader.h"
 
-#include <cstddef>
+#include <cstdint>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
-#include <memory>
 #include <cassert>
 
 namespace ow::render {
@@ -48,7 +45,7 @@ namespace ow::render {
 
     bool OpenGLRenderBackend::setup_viewport(unsigned int x, unsigned int y, unsigned int width, unsigned int height) const{
         glViewport(x,y, width, height);
-        return false;
+        return true;
     }
 
     bool OpenGLRenderBackend::clear() const
@@ -79,6 +76,16 @@ namespace ow::render {
         glEnableVertexAttribArray(1);
         glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
 
+        if(batch.mesh.uvs.size() > 0){
+            GLuint tbo;
+            glGenBuffers(1, &tbo);
+            glBindBuffer(GL_ARRAY_BUFFER, tbo);
+            glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(batch.mesh.uvs.size())*2*sizeof(float), batch.mesh.uvs.data(), GL_STATIC_DRAW);
+
+            glEnableVertexAttribArray(2);
+            glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
+        }
+
         GLuint ebo;
         glGenBuffers(1, &ebo);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
@@ -89,22 +96,17 @@ namespace ow::render {
         return true;
     }
 
-    bool OpenGLRenderBackend::prepare_shader(Batch& batch) const{
-        std::string vertexShaderSource = utils::read_file("res/shaders/simple.vert");
-
-        std::string fragmentShaderSource = utils::read_file("res/shaders/simple.frag");
-        std::string fragmentPBRShaderSource = utils::read_file("res/shaders/pbr.glsl");
-        fragmentShaderSource =  fragmentShaderSource+fragmentPBRShaderSource;
+    bool OpenGLRenderBackend::prepare_shader(const Shader& shader,  Batch& batch) const{
 
         batch.shader_ref = glCreateProgram();
 
         GLuint vertID = glCreateShader(GL_VERTEX_SHADER);
         GLuint fragID = glCreateShader(GL_FRAGMENT_SHADER);
-        const char* vertexShaderSourceCStr = vertexShaderSource.c_str();
-        const char* fragmentShaderSourceCStr = fragmentShaderSource.c_str();
-        GLint vertexShaderSourceSize = vertexShaderSource.size();
+        const char* vertexShaderSourceCStr = shader.get_vertex_shader().c_str();
+        const char* fragmentShaderSourceCStr = shader.get_fragment_shader().c_str();
+        GLint vertexShaderSourceSize = shader.get_vertex_shader().size();
         assert(vertexShaderSourceSize > 0);
-        GLint fragmentShaderSourceSize = fragmentShaderSource.size();
+        GLint fragmentShaderSourceSize = shader.get_fragment_shader().size();
         assert(fragmentShaderSourceSize > 0);
         glShaderSource(vertID, 1, &vertexShaderSourceCStr, &vertexShaderSourceSize);
         glShaderSource(fragID, 1, &fragmentShaderSourceCStr, &fragmentShaderSourceSize);
@@ -113,17 +115,21 @@ namespace ow::render {
         glCompileShader(vertID);
         glGetShaderiv(vertID, GL_COMPILE_STATUS, &success);
         if(success == 0){
-            GLchar infoLog[1024];
-            glGetShaderInfoLog(vertID, sizeof(infoLog), nullptr, infoLog);
-            std::cout << "failed to compile vertex shader\n"<<infoLog << std::endl;
+            GLint infoLogLength;
+            glGetShaderiv(vertID, GL_INFO_LOG_LENGTH, &infoLogLength);
+            std::vector<GLchar> infoLog(infoLogLength);
+            glGetShaderInfoLog(vertID, infoLogLength, nullptr, infoLog.data());
+            std::cout << "failed to compile vertex shader\n"<<infoLog.data() << std::endl;
             return false;
         }
         glCompileShader(fragID);
         glGetShaderiv(fragID, GL_COMPILE_STATUS, &success);
         if(success == 0){
-            GLchar infoLog[1024];
-            glGetShaderInfoLog(fragID, sizeof(infoLog), nullptr, infoLog);
-            std::cout << "failed to compile fragment shader:\n"<<infoLog << std::endl;
+            GLint infoLogLength;
+            glGetShaderiv(fragID, GL_INFO_LOG_LENGTH, &infoLogLength);
+            std::vector<GLchar> infoLog(infoLogLength);
+            glGetShaderInfoLog(fragID, infoLogLength, nullptr, infoLog.data());
+            std::cout << "failed to compile fragment shader:\n"<<infoLog.data() << std::endl;
             return false;
         }
 
@@ -133,9 +139,11 @@ namespace ow::render {
         glLinkProgram(batch.shader_ref);
         glGetProgramiv(batch.shader_ref, GL_LINK_STATUS, &success);
         if(success == 0){
-            GLchar infoLog[1024];
-            glGetProgramInfoLog(batch.shader_ref, sizeof(infoLog), nullptr, infoLog);
-            std::cout << "failed to link shader:\n"<< infoLog << std::endl;
+            GLint infoLogLength;
+            glGetProgramiv(batch.shader_ref, GL_INFO_LOG_LENGTH, &infoLogLength);
+            std::vector<GLchar> infoLog(infoLogLength);
+            glGetProgramInfoLog(batch.shader_ref, infoLogLength, nullptr, infoLog.data());
+            std::cout << "failed to link shader:\n"<< infoLog.data() << std::endl;
             return false;
         }
         return true;
@@ -175,46 +183,36 @@ namespace ow::render {
         glUseProgram(0);
         return true;
     }
+
+    uint32_t OpenGLRenderBackend::upload_texture(const cg::Image &image) const{
+        GLuint textureID;
+        glGenTextures(1, &textureID);
+        glBindTexture(GL_TEXTURE_2D, textureID);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, image.get_width(), image.get_height(), 0, GL_RGB, GL_FLOAT, image.data());
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glGenerateMipmap(GL_TEXTURE_2D);
+        return textureID;
+    }
+
+    bool OpenGLRenderBackend::bind_texture(uint32_t texture_ref) const{
+        glBindTexture(GL_TEXTURE_2D, texture_ref);
+        return true;
+    }
+
+    bool OpenGLRenderBackend::unbind_texture() const{
+        glBindTexture(GL_TEXTURE_2D, 0);
+        return true;
+    }
     
     bool OpenGLRenderBackend::draw(const Batch& batch) const{
         glBindVertexArray(batch.vao_ref);
 
-        /* Matrices */
-
-        /*math::Mat4f modelMatrix = math::Mat4f::identity();
-        math::Mat4f modelViewProjectionMatrix = projectionMatrix * viewMatrix * modelMatrix;
-        math::Mat3f normalMatrix = (modelMatrix).toMat3().inverse().transpose();
-
-        GLint viewLoc = glGetUniformLocation(batch.shader_ref, "viewMatrix");
-        glUniformMatrix4fv(viewLoc, 1, GL_FALSE, viewMatrix.data());
-
-        GLint modelLoc = glGetUniformLocation(batch.shader_ref, "modelMatrix");
-        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, modelMatrix.data());
-
-        GLint modelViewProjectionLoc = glGetUniformLocation(batch.shader_ref, "modelViewProjectionMatrix");
-        glUniformMatrix4fv(modelViewProjectionLoc, 1, GL_FALSE, modelViewProjectionMatrix.data());
-
-        GLint normalLoc = glGetUniformLocation(batch.shader_ref, "normalMatrix");
-        glUniformMatrix3fv(normalLoc,1, GL_FALSE, normalMatrix.data());
-
-        GLint cameraLoc = glGetUniformLocation(batch.shader_ref, "cameraPosition");
-        glUniform3f(cameraLoc, cameraPosition.x, cameraPosition.y, cameraPosition.z);*/
-
-        /* Material */
-
-        GLint albedoLoc = glGetUniformLocation(batch.shader_ref, "albedo");
-        glUniform3f(albedoLoc, batch.mesh.material->albedo.r, batch.mesh.material->albedo.g, batch.mesh.material->albedo.b);
-        GLint roughnessLoc = glGetUniformLocation(batch.shader_ref, "roughness");
-        glUniform1f(roughnessLoc, batch.mesh.material->roughness);
-        GLint metallicLoc = glGetUniformLocation(batch.shader_ref, "metallic");
-        glUniform1f(metallicLoc, batch.mesh.material->metallic);
-        GLint emissionLoc = glGetUniformLocation(batch.shader_ref, "emission");
-        glUniform3f(emissionLoc, batch.mesh.material->emissive.r, batch.mesh.material->emissive.g, batch.mesh.material->emissive.b);
-
         glDrawElements(GL_TRIANGLES, batch.mesh.faces.size()*3, GL_UNSIGNED_SHORT, nullptr);
 
         glBindVertexArray(0);
-        glUseProgram(0);
 
         return true;
     }

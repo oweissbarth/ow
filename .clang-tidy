@@ -13,4 +13,5 @@ Checks: '-*,
           -readability-named-parameter,
           -readability-braces-around-statements,
           -modernize-use-trailing-return-type,
-          -readability-use-anyofallof'
+          -readability-use-anyofallof
+          -performance-avoid-endl'

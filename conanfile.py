@@ -17,6 +17,7 @@ class ImGuiExample(ConanFile):
         self.requires("imgui/1.89.4")
         self.requires("catch2/3.3.2")
         self.requires("glm/cci.20230113")
+        self.requires("stb/cci.20220909")
 
     def configure(self):
         self.options["glad"].gl_profile = "core"
@@ -35,5 +36,3 @@ class ImGuiExample(ConanFile):
         copy(self, "*opengl3*", os.path.join(self.dependencies["imgui"].package_folder,
             "res", "bindings"), os.path.join(self.source_folder, "examples/imgui/imgui/bindings"))
 
-    def layout(self):
-        cmake_layout(self)
